@@ -3,7 +3,7 @@ library(drake)
 r_make()
 
 
-drake::drake_cache("C:\\globalIRmap\\src/globalIRmap/.drake")$unlock()
+drake::drake_cache("D:\\globalIRmap\\src/globalIRmap_anthropo/.drake")$unlock()
 drake::drake_cache("E:\\Mathis/src/globalIRmap/.drake")$unlock()
 
 #################### Interactive manipulations of plan #########################
