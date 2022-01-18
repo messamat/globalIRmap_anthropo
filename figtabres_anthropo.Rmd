@@ -1,0 +1,268 @@
+---
+title: "figs_tabs_results"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r import, echo=FALSE}
+#Possible palettes #1: #538797, #C2D9CD, #FF842A https://www.instagram.com/p/B9En6h2gbJ5/
+#Possible palette #2: #238189, #3FA8B3, #E8F3EE, #FF674D https://www.instagram.com/p/BxZZu82gBm3/
+#File structure
+rootdir <- rprojroot::find_root(rprojroot::has_dir("src"))
+srcdir <- file.path(rootdir, 'src', 'globalIRmap_anthropo')
+datdir <- file.path(rootdir, 'data')
+resdir <- file.path(rootdir, 'results')
+
+#Source packages functions
+library(drake)
+library(flextable)
+library(grid)
+source(file.path(srcdir, 'R/IRmapping_packages.R'))
+source(file.path(srcdir, 'R/IRmapping_functions.R'))
+source(file.path(srcdir, 'R/IRmapping_plan.R'))
+
+loadd(gpredsdt)
+loadd(rivpred)
+loadd(tasks_u10)
+loadd(tasks_featsel_u10)
+loadd(tasks_featsel_o1)
+```
+
+
+#Geographical distribution of reference streamgauging stations
+##Statistics for paper
+- Number of gauges in total: \         
+`r gpredsdt[, .N]` \
+- Number of perennial gauges used in analysis (average number of years of data): \
+`r gpredsdt[intermittent_o1800==0, .N]`(`r gpredsdt[intermittent_o1800==0, mean(totalYears_kept_o1800)]`) \
+- Number of intermittent gauges taking in account only post-1800, mDur >= 1 (average number of years of data): \
+`r gpredsdt[intermittent_o1800==1, .N]`(`r gpredsdt[intermittent_o1800==1, mean(totalYears_kept_o1800)]`) \
+- Number of intermittent gauges taking in account only post-1800, mDur > 0 (average number of years of data): \
+`r gpredsdt[mDur_o1800>0, .N]` \
+- Number of intermittent gauges taking in account only post-1800, mDur >= 30 (average number of years of data): \
+`r gpredsdt[mDur_o1800>=30, .N]` \
+- Number of reaches in network: \
+`r rivpred[disan_m3_pyr > 0.1 & INLAKEPERC < 1, .N]` \
+- Average length of reaches in network: \
+`r rivpred[disan_m3_pyr > 0.1 & INLAKEPERC < 1, mean(LENGTH_KM*(1-INLAKEPERC))]` \
+- Total length of reaches in network: \
+`r rivpred[disan_m3_pyr > 0.1 & INLAKEPERC < 1, sum(LENGTH_KM*(1-INLAKEPERC))]` \
+- Total number of predictor variables: \
+`r length(tasks_u10$classif$feature_names)` \
+- Total number of predictor variables kept in model for gauges < 10 m3/s: \
+`r length(tasks_featsel_u10[[2]]$feature_names)` \
+- Total number of predictor variables kept in model for gauges >= 1 m3/s: \
+`r length(tasks_featsel_o1[[2]]$feature_names)` \
+
+
+```{r clean-targets, echo=FALSE}
+remove(gpredsdt)
+remove(rivpred)
+remove(tasks_u10)
+remove(tasks_featsel_u10)
+remove(tasks_featsel_o1)
+gc()
+```
+
+#Threshold sensitivity
+```{r threshold-sensitivity, fig.height = 6, fig.height = 6, dpi=600, echo = FALSE}
+loadd(threshold_sensitivity)
+
+png(paste0(file.path(resdir, 'figures//thresholdsensitivty_anthropo'), 
+           format(Sys.Date(), '%Y%m%d'), '.png'), 
+    width=6, height=6, units='in', res=600)
+print(threshold_sensitivity$gperf)
+dev.off()
+
+print(threshold_sensitivity$predbounds)
+```
+
+#Methods - Table 2. Specification and benchmark comparison of models
+```{r models-benchmarking-table, echo=FALSE}
+loadd(tablebm_classif1_u10)
+loadd(tablebm_classif2_u10)
+print('Setup table u10')
+setup_table_u10 <- rbindlist(list(tablebm_classif1_u10$setup,
+                              tablebm_classif2_u10$setup),
+                         fill=T, use.names=T)
+
+flextable(setup_table_u10)
+
+print('Results table u10')
+results_table_u10 <- rbindlist(list(tablebm_classif1_u10$results,
+                                tablebm_classif2_u10$results),
+                           fill=T, use.names=T)
+flextable(results_table_u10)
+
+print('Setup table o1')
+loadd(tablebm_classif1_o1)
+loadd(tablebm_classif2_o1)
+setup_table_o1 <- rbindlist(list(tablebm_classif1_o1$setup,
+                              tablebm_classif2_o1$setup),
+                         fill=T, use.names=T)
+
+flextable(setup_table_o1)
+
+print('Results table o1')
+results_table_o1 <- rbindlist(list(tablebm_classif1_o1$results,
+                              tablebm_classif2_o1$results),
+                         fill=T, use.names=T)
+flextable(results_table_o1)
+
+remove(tablebm_classif1_u10)
+remove(tablebm_classif2_u10)
+gc()
+```
+
+
+#Main text - Figure 2. Variable importance for top 20 variables
+```{r variable-importance, fig.width=7.5, fig.height=6, dpi=600, echo=FALSE}
+loadd(vimp_plot_u10)
+loadd(vimp_plot_o1)
+
+fwrite(vimp_plot_u10$data[, .(varnames, imp_wmean, imp_wsd, Keyscale, Keystat, 
+                              Category, Attribute, Source, Citation, varname)],
+       paste0(file.path(resdir, 'figures//vimpdata_u10_anthropo_'), 
+           format(Sys.Date(), '%Y%m%d'), '.csv')
+)
+
+fwrite(vimp_plot_o1$data[, .(varnames, imp_wmean, imp_wsd, Keyscale, Keystat, 
+                              Category, Attribute, Source, Citation, varname)],
+       paste0(file.path(resdir, 'figures//vimpdata_o1_anthropo_'), 
+           format(Sys.Date(), '%Y%m%d'), '.csv')
+)
+
+p_u10 <- vimp_plot_u10 +
+  theme(plot.margin = unit(c(10,260,0,0), "pt")) +
+  labs(x=bquote('A. Gauges with mean annual discharge < 10'~m^3~s^-1)) + 
+  theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+
+p_o1format <- vimp_plot_o1 +
+  coord_flip(ylim=c(min(vimp_plot_o1$data[, max(imp_wmean+imp_wsd)+1], 100), 0),
+             clip='off') +
+  scale_x_discrete(name=expression(
+    B.~Gauges~with~mean~annual~discharge >= 1~m^3~s^-1),
+    labels = function(x) {
+      stringr::str_wrap(tolower(x), width = 25)
+    },
+    limits = rev,
+    position='top') +
+  scale_y_reverse(position='right', expand=c(0,0)) +
+  theme(legend.position = 'none',
+        plot.background = element_blank(),
+        panel.background = element_blank(),
+        plot.margin = unit(c(0,0,0,0.1), 'cm'))
+
+pdf(paste0(file.path(resdir, 'figures//vimp_anthropo_'), 
+           format(Sys.Date(), '%Y%m%d'), '.pdf'), 
+    width=7.5, height=6)
+p_u10 + p_o1format
+dev.off()
+
+remove(vimp_plot_u10)
+remove(vimp_plot_o1)
+gc()
+```
+
+#Main text - Figure 3. Partial dependence plots
+```{r partial-dependence, fig.width=12, fig.height=12, echo=FALSE}
+loadd(pd_plot_u10)
+lapply(pd_plot_u10, function(p) plot(p))
+
+loadd(pd_plot_o1)
+lapply(pd_plot_o1, function(p) plot(p))
+
+remove(pd_plot_u10)
+remove(pd_plot_o1)
+gc()
+```
+
+#Final binned summary statistics for split model approach(< 10 and >= 1)
+```{r binned_misclas, echo=FALSE}
+loadd(bin_finalmisclass_IRpredcat_CVnosp)
+loadd(bin_finalmisclass_IRpredcat_CVsp)
+loadd(gpredsdt)
+
+print('Split model approach: 3-fold non-spatial CV')
+print(paste0(
+  'Overal bacc:', 
+  gpredsdt[, round(mlr3measures::bacc(intermittent_o1800, 
+                                      as.factor(IRpredcat_CVnosp)),
+                   2)]
+)
+)
+flextable(bin_finalmisclass_IRpredcat_CVnosp)
+
+print('Slit model approach: 40-fold spatial CV')
+print(paste0(
+  'Overal bacc:', 
+  gpredsdt[, round(mlr3measures::bacc(intermittent_o1800, 
+                                      as.factor(IRpredcat_CVsp)),
+                   2)]
+)
+)
+flextable(bin_finalmisclass_IRpredcat_CVsp)
+
+remove(bin_finalmisclass_IRpredcat_CVnosp)
+remove(bin_finalmisclass_IRpredcat_CVsp)
+```
+
+#Statistics and figure for AFI across network
+```{r afi-net, echo=FALSE}
+loadd(netchange)
+print(netchange$stat)
+
+pdf(paste0(file.path(resdir, 'figures//netIRanthropo_barplot'), 
+           format(Sys.Date(), '%Y%m%d'), '.pdf'), 
+    width=7.5, height=6)
+netchange$plot
+dev.off()
+
+```
+
+
+
+#Environmental variables used in model training  + variable selection results
+```{r variabl-figure, echo=FALSE}
+loadd(predvars)
+
+#Write predvars to csv
+fwrite(predvars, file.path(resdir, paste0('predictor_variables_anthropo.csv')))
+
+#Make table
+flextable(predvars[,c('Category', 'Attribute', 'Spatial representation',
+                      'Temporal/Statistical aggreg.', 'Source', 'Citation'),
+                   with=F])
+
+remove(predvars)
+gc()
+```
+
+#Tables of intermittence by categories for base model
+```{r inter-tables, echo=FALSE}
+
+tablist <- list('', 'climatetable_notanthropo',
+                    'basintable_anthropo', 'basintable_anthropo')
+
+format_summarytab <- function(tab) {
+  numcols <- names(tab)[tab[,sapply(.SD, class)=='numeric']]
+  out_tab <- flextable(tab[, (numcols) := lapply(.SD, function(x) as.integer(round(x))),
+                           .SDcols = numcols]) %>%
+    autofit
+  return(out_tab)
+}
+
+
+print('climate_anthropo')
+format_summarytab(drake::readd(climatetable_anthropo)$'0.5')
+
+print('climate_notanthropo')
+format_summarytab(drake::readd(climatetable_notanthropo)$'0.5')
+
+print('basin_anthropo')
+format_summarytab(drake::readd(basintable_anthropo)$'0.5')
+
+print('basin_notanthropo')
+format_summarytab(drake::readd(basintable_notanthropo)$'0.5')
+```

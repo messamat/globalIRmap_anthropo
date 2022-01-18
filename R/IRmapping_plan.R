@@ -19,11 +19,15 @@ plan_preprocess <- drake_plan(
   path_riveratlas_legends = file_in(!!file.path(rootdir, "data\\HydroATLAS\\HydroATLAS_v10_Legends.xlsx")),
   path_riveratlas = file_in(!!file.path(rootdir, 'results\\RiverATLAS_v10tab.csv')),
   path_riveratlas2 = file_in(!!file.path(rootdir, 'results\\RiverATLAS_v11tab.csv')),
-  path_disanthropo = file_in(!!file.path(rootdir, 'results\\RiverATLAS_v11_dis_ant_year.csv')),
+  path_disanthropo = file.path(rootdir, 'results\\RiverATLAS_v11_dis_ant_year.csv'), ##############################Add file_in
   path_bas03 = file.path(!!rootdir, "data\\HydroATLAS\\BasinATLAS_v10.gdb\\BasinATLAS_v10_lev03"),
+  path_prednotanthropo = file.path(!!rootdir, "results\\RiverATLAS_predbasic800_20210216.csv"),
 
-  outpath_riveratlaspred = file.path(rootdir, 'results\\RiverATLAS_predanthropo.csv'),
+  outpath_riveratlaspred = file.path(rootdir, 'results\\RiverATLAS_predanthropo_20211027.csv'),
   outpath_gaugep = file_out(!!file.path(rootdir, 'results\\GRDCstations_predanthropo.gpkg')),
+  outpath_bas03error = file_out(!!file.path(rootdir, 'results\\BasinATLAS_v10_lev03_errors_anthropo.gpkg')),
+  outpath_bas03change = file_out(!!file.path(rootdir, 'results\\BasinATLAS_v10_lev03_anthropoIRchange.gpkg')),
+  outpath_netdiftab = file.path(rootdir, 'results\\RiverATLAS_difanthropo_20211027.csv'),
 
   #-------------------- Pre-analysis ------------------------------------------
   gaugep = target(
@@ -59,7 +63,7 @@ plan_preprocess <- drake_plan(
                                     verbose = FALSE,
                                     .progress = TRUE)),
 
-  #basemaps = get_basemapswintri()
+  basemaps = get_basemapswintri()
 )
 
 ########################### plan_setupdata ####################################
@@ -133,7 +137,7 @@ plan_setupdata <- drake_plan(
   
   # netlength_extra = extrapolate_networklength(
   #   inp_riveratlas = path_riveratlas,
-  #   inp_distanthropo = path_disanthropo,
+  #   inp_disanthropo = path_disanthropo,
   #   min_cutoff = 0.1,
   #   dispred =  seq(0.01, 0.09, 0.01),
   #   interactive = F,
@@ -393,7 +397,7 @@ plan_getpreds <- drake_plan(
   )
   ,
 
-  ########################################################################################CAREFUL. THIS WAS ALL MODIFIED FOR LOW RAM. VERY MANUAL. REPAIR ON BIGGER COMPUTER
+  ########################################################################################CAREFUL. THIS WAS ALL MODIFIED FOR LOW RAM (32GB). VERY MANUAL. REPAIR ON BIGGER COMPUTER
   rfpreds_network = target(
     "D:/globalIRmap/results\\RiverATLAS_predanthropo_20211027.csv"
     # write_netpreds(
@@ -456,13 +460,13 @@ plan_getoutputs_1 <- drake_plan(
   )
   ,
 
-  envhist = target(
-    layout_ggenvhist(in_rivernetwork = rivernetwork,
-                     in_gaugepred = rfpreds_gauges,
-                     in_predvars = predvars)
-    # ,
-    # trigger = trigger(mode = "condition", condition =FALSE)
-  ),
+  # envhist = target(
+  #   layout_ggenvhist(in_rivernetwork = rivernetwork,
+  #                    in_gaugepred = rfpreds_gauges,
+  #                    in_predvars = predvars)
+  #   # ,
+  #   # trigger = trigger(mode = "condition", condition =FALSE)
+  # ),
 
   bin_finalmisclass = target(
     bin_misclass(in_predictions = gpredsdt,
@@ -526,46 +530,113 @@ plan_getoutputs_1 <- drake_plan(
 
 
 plan_getoutputs_2 <- drake_plan(
-  IRESextra = extrapolate_IRES(in_rivpred = rivpred,
-                               in_extranet = netlength_extra,
-                               min_cutoff = 0.1,
-                               valuevar = 'predbasic800cat',
-                               interactive = F),
+  # IRESextra = extrapolate_IRES(in_rivpred = rivpred,
+  #                              in_extranet = netlength_extra,
+  #                              min_cutoff = 0.1,
+  #                              valuevar = 'predbasic800cat',
+  #                              interactive = F),
 
-  globaltables = target(
-    tabulate_globalsummary(outp_riveratlaspred = rfpreds_network,
+  # globaltables = target(
+  #   tabulate_globalsummary(outp_riveratlaspred = rfpreds_network,
+  #                          inp_riveratlas = path_riveratlas,
+  #                          inp_riveratlas_legends = path_riveratlas_legends,
+  #                          inp_disanthropo = path_disanthropo,
+  #                          inp_monthlydischarge = path_monthlydischarge,
+  #                          interthresh = 0.5,
+  #                          idvars = in_idvars,
+  #                          castvar = 'disan_m3_pyr',
+  #                          castvar_num = FALSE,
+  #                          weightvar = 'LENGTH_KM',
+  #                          valuevar = 'predbasic800',
+  #                          valuevarsub = 1,
+  #                          binfunc = 'manual',
+  #                          binarg = c(0.1, 1, 10, 100, 1000, 10000, 1000000)*1000,
+  #                          na.rm=T,
+  #                          tidy = FALSE,
+  #                          nolake = TRUE,
+  #                          mincutoff = 100),
+  #   transform = map(in_idvars = c('gad_id_cmj', 'fmh_cl_cmj',
+  #                                 'tbi_cl_cmj'))
+  #   # ,
+  #   # trigger = trigger(mode = "condition", condition =TRUE)
+  # ),
+  
+  clztable = target(
+    tabulate_globalsummary(outp_riveratlaspred = in_pred,
                            inp_riveratlas = path_riveratlas,
                            inp_riveratlas_legends = path_riveratlas_legends,
+                           inp_disanthropo = path_disanthropo,
+                           inp_monthlydischarge = path_monthlydischarge,
                            interthresh = 0.5,
-                           idvars = in_idvars,
+                           idvars = 'clz_cl_cmj',
                            castvar = 'disan_m3_pyr',
                            castvar_num = FALSE,
                            weightvar = 'LENGTH_KM',
                            valuevar = 'predbasic800',
                            valuevarsub = 1,
                            binfunc = 'manual',
-                           binarg = c(0.1, 1, 10, 100, 1000, 10000, 1000000),
+                           binarg = c(10, 1000000)*1000,
                            na.rm=T,
                            tidy = FALSE,
                            nolake = TRUE,
-                           mincutoff = 0.1),
-    transform = map(in_idvars = c('gad_id_cmj', 'fmh_cl_cmj',
-                                  'tbi_cl_cmj', 'clz_cl_cmj'))
-    # ,
-    # trigger = trigger(mode = "condition", condition =TRUE)
-  ),
-
-  globaltable_clzextend = extend_globalsummary_clz(
-    in_IRESextra = IRESextra,
-    in_globaltable = globaltables_clz_cl_cmj,
-    inp_riveratlas_legends = path_riveratlas_legends
-  ),
-
-
-  IRpop = compute_IRpop(in_rivpred = rivpred,
-                        inp_linkpop = path_linkpop,
-                        valuevar = 'predbasic800cat'
+                           mincutoff = 100)
+    ,
+    transform = map(in_pred = c(rfpreds_network, 
+                                file.path(path_resdir, 
+                                          'RiverATLAS_predbasic800_20210216.csv')),
+                    .names = c('climatetable_anthropo', 'climatetable_notanthropo'))
   )
+  ,
+  
+  basintable = target(
+    tabulate_globalsummary(outp_riveratlaspred = in_pred,
+                           inp_riveratlas = path_riveratlas,
+                           inp_riveratlas_legends = path_riveratlas_legends,
+                           inp_disanthropo = path_disanthropo,
+                           inp_monthlydischarge = path_monthlydischarge,
+                           interthresh = 0.5,
+                           idvars = 'HYBAS_ID03',
+                           castvar = 'disan_m3_pyr',
+                           castvar_num = FALSE,
+                           weightvar = 'LENGTH_KM',
+                           valuevar = 'predbasic800',
+                           valuevarsub = 1,
+                           binfunc = 'manual',
+                           binarg = c(10, 1000000)*1000,
+                           na.rm=T,
+                           tidy = FALSE,
+                           nolake = TRUE,
+                           mincutoff = 100)
+    ,
+    transform = map(in_pred = c(rfpreds_network, 
+                                file.path(path_resdir, 
+                                          'RiverATLAS_predbasic800_20210216.csv')),
+                    .names = c('basintable_anthropo', 'basintable_notanthropo'))
+  )
+  ,
+
+  basinchange = map_basinchange(
+    in_tableanthropo = basintable_anthropo,
+    in_tablenotanthropo = basintable_notanthropo,
+    inp_basin = path_bas03,
+    outp_basinchange = outpath_bas03change
+  ),
+  
+  netchange = comp_netchange(in_rivpred = rivpred,
+                             in_prednotanthropo = path_prednotanthropo,
+                             out_netdiftab = outpath_netdiftab)
+  
+  # globaltable_clzextend = extend_globalsummary_clz(
+  #   in_IRESextra = IRESextra,
+  #   in_globaltable = globaltables_clz_cl_cmj,
+  #   inp_riveratlas_legends = path_riveratlas_legends
+  # ),
+
+
+  # IRpop = compute_IRpop(in_rivpred = rivpred,
+  #                       inp_linkpop = path_linkpop,
+  #                       valuevar = 'predbasic800cat'
+  # )
 )
 
 # ########################### plan_compareresults ################################

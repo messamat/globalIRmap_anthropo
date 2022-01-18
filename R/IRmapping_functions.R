@@ -3586,7 +3586,7 @@ get_USdata <- function(in_ids, maxyear, verbose = F) {
 #'
 #' @export
 analyzemerge_gaugeir <- function(in_GRDCgaugestats, in_GSIMgaugestats, yearthresh,
-                                 in_gaugep, inp_resdir, plotseries = FALSE) {
+                                 in_gaugep, inp_resdir, plotseries = FALSE) { 
   ### Analyze GSIM data ########################################################
   GSIMstatsdt <- rbindlist(in_GSIMgaugestats)
   
@@ -6079,12 +6079,16 @@ netpredformat <- function(outp_riveratlaspred, in_rivernetwork) {
 #' 
 #' @export
 extrapolate_networklength <- function(inp_riveratlas,
+                                      inp_disanthropo,
                                       min_cutoff = 0.1,
                                       dispred = seq(0.01, 0.09, 0.01),
                                       interactive = T,
                                       grouping_var = 'PFAF_IDclz') {
   
   #Glossary - CCDF: Complementary Cumulated Distribution Function
+  
+  #Read anthropogenic discharge
+  disanthropo <- fread(inp_disanthropo)
   
   #Columns to import from full network
   incols <- c('HYRIV_ID', 'INLAKEPERC', 'PFAF_ID05',
@@ -6094,7 +6098,9 @@ extrapolate_networklength <- function(inp_riveratlas,
                            cols_tokeep = incols) %>%
     setorder(dis_m3_pyr) %>%
     .[, LENGTH_KM_NOLAKE := LENGTH_KM*(1-INLAKEPERC)] %>%
-    .[LENGTH_KM_NOLAKE > 0,]
+    .[LENGTH_KM_NOLAKE > 0,] %>%
+    merge(disanthropo, by = 'HYRIV_ID', all.x=TRUE, all.y=FALSE) %>%
+    setnames('MEAN', 'disan_m3_pyr')
   
   if (grouping_var == 'PFAF_IDclz') {
     riveratlas[, PFAF_IDclz := paste0(floor(PFAF_ID05/1000), '_', clz_cl_cmj)]
@@ -7004,6 +7010,10 @@ bin_misclass <-  function(in_predictions=NULL, in_resampleresult=NULL,
 #' 
 #' @export
 ggvimp <- function(in_rftuned, in_predvars, varnum = 10, spatial_rsp=FALSE) {
+  #So as not to relaunch whole processing
+  in_predvars[varcode == 'disan_m3_pyr', 
+              varname := 'Anthropogenic discharge annual average']
+  
   rsmp_res <- get_outerrsmp(in_rftuned, spatial_rsp=spatial_rsp)
   
   #Get variable importance and format them
@@ -7078,6 +7088,10 @@ ggvimp <- function(in_rftuned, in_predvars, varnum = 10, spatial_rsp=FALSE) {
 ggpartialdep <- function (in_rftuned, in_predvars, colnums, ngrid, nodupli=T,
                           nvariate = 2,
                           parallel=T, spatial_rsp=FALSE) {
+  
+  #So as not to relaunch whole processing
+  in_predvars[varcode == 'disan_m3_pyr', 
+              varname := 'Anthropogenic discharge annual average']
   
   #Get outer resampling of interest
   rsmp_res <- get_outerrsmp(in_rftuned, spatial_rsp=spatial_rsp)
@@ -7737,6 +7751,43 @@ map_basinBACC <- function(in_gaugepred, #rfpreds_gauges,
     plot_jcdeviate = plot_jcdeviate
   ))
 }
+
+#------ map_basinchange ------
+map_basinchange <- function(in_tableanthropo,
+                            in_tablenotanthropo,
+                            inp_basin,
+                            outp_basinchange) {
+  
+  
+  basinstat_merge <- merge(
+    melt(in_tableanthropo$`0.5`, id.vars = 'HYBAS_ID03') %>% setnames('value', 'value_anthropo'),
+    melt(in_tablenotanthropo$`0.5`, id.vars = 'HYBAS_ID03') %>% setnames('value', 'value_notanthropo'),
+    by = c('HYBAS_ID03', 'variable')
+  )
+  
+  basinstat_merge[HYBAS_ID03 != 'World', 
+                  irchange := value_anthropo - value_notanthropo] 
+  
+  baschange <- dcast(basinstat_merge, HYBAS_ID03~variable, 
+                     value.var=list('value_anthropo', 'value_notanthropo', 'irchange'))
+  
+  
+  bas03 <- st_read(dsn = dirname(inp_basin),
+                   layer = basename(inp_basin))
+  
+  #Output stats to .gpkg
+  baschange_format <- base::merge(
+    bas03, baschange,
+    by.x='HYBAS_ID', by.y='HYBAS_ID03',
+    all.x.=T)
+  
+  st_write(obj=baschange_format,
+           dsn=outp_basinchange,
+           driver = 'gpkg',
+           delete_dsn=T)
+}
+
+
 
 ##### -------------------- Report functions -----------------------------------
 #------ get_basemapswintri ------------
@@ -8741,6 +8792,8 @@ test_thresholdsensitivity <- function(in_gpredsdt,
 tabulate_globalsummary <- function(outp_riveratlaspred,
                                    inp_riveratlas,
                                    inp_riveratlas_legends,
+                                   inp_disanthropo,
+                                   inp_monthlydischarge,
                                    idvars,
                                    interthresh,
                                    castvar, castvar_num=TRUE,
@@ -8757,12 +8810,17 @@ tabulate_globalsummary <- function(outp_riveratlaspred,
     rivpred <- fread(outp_riveratlaspred)
   }
   
+  disanthropo <- fread(inp_disanthropo)
+  
   #Columns to import from full network
   incols <- c('HYRIV_ID', 'INLAKEPERC', castvar, idvars, valuevar, weightvar)
   #Import global river network and join to predictions
   riveratlas <- fread_cols(file_name=inp_riveratlas,
                            cols_tokeep = incols) %>%
-    .[rivpred, on='HYRIV_ID']
+    .[rivpred, on='HYRIV_ID'] %>%
+    merge(disanthropo, by = 'HYRIV_ID', all.x=TRUE, all.y=FALSE) %>%
+    setnames('MEAN', 'disan_m3_pyr')
+  
   
   #Exclude either those that intersect lakes and/or those that have zero discharge
   if (nolake) {
@@ -9869,5 +9927,65 @@ qc_onde <- function(inp_ondedatdir, inp_onderesdir, inp_riveratlas,
 }
 
 
+
+#------ changetable ---
+function() {
+  tablemerge <- merge(climatetable_anthropo$`0.5`, climatetable_notanthropo$`0.5`, by='clz_cl_cmj', suffixes = c("_anthropo", '_notanthropo'))
+}
+
+#------ comp_netchange ------
+comp_netchange <- function(in_rivpred,
+                           in_prednotanthropo,
+                           out_netdiftab) {
+  netpred_anthropo <- in_rivpred %>%
+    setnames(c('predbasic800', 'predbasic800cat'),
+             c('predanthropo', 'predcatanthropo'))
+  netpred_notanthropo <- fread(in_prednotanthropo) 
+  
+  netpredmerge <- merge(netpred_notanthropo, netpred_anthropo, by="HYRIV_ID")
+  netpredmerge[, `:=`(probdif = predanthropo - predbasic800,
+                      catchange = (2*predcatanthropo)-predbasic800cat)]
+  remove(netpred_anthropo)
+  remove(netpred_notanthropo)
+  
+  fwrite(netpredmerge[, .(HYRIV_ID, probdif, catchange)], out_netdiftab)
+  
+  netpredbin <- bin_dt(in_dt = netpredmerge[disan_m3_pyr >= 0.1,], #Only use river reaches with discharge over 0.1 m3/s
+                       binvar = 'disan_m3_pyr',
+                       valuevar = 'catchange',
+                       binfunc = 'manual',
+                       binarg = c(0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000, 10000, 50000),
+                       na.rm = T)
+  
+  netpredbin[, DAbin_sumlen := sum(LENGTH_KM), by=bin_lmin]
+  
+  catchange_byDA <- netpredbin[, list(catchange_proportion = 
+                                        100*sum(LENGTH_KM)/.SD[1, DAbin_sumlen]),
+                                 by=.(bin, bin_lmin, catchange)] %>%
+    .[order(bin),]
+  
+  anthropochangeplot <- ggplot(catchange_byDA, aes(x=bin, y= catchange_proportion,
+                                                   fill=as.factor(catchange))) + 
+    geom_bar(position='stack', stat='identity') + 
+    scale_fill_manual(values=c('#4dac26', '#b8e186', '#f1b6da','#d01c8b')) +
+    scale_x_continuous(breaks = unique(catchange_byDA$bin),
+                       labels=unique(catchange_byDA$bin_lmin)) +
+    scale_y_continuous(name = "% of river network length", expand=c(0,0)) +
+    theme_classic() +
+    theme(text = element_text(size=12),
+          axis.text.x = element_text(vjust=0))
+    
+  
+  overallstats = list(
+    irtoper = netpredbin[catchange ==-1, sum((1-INLAKEPERC)*LENGTH_KM)]/ 
+      netpredbin[, sum((1-INLAKEPERC)*LENGTH_KM)],
+    pertoir = netpredbin[catchange ==2, sum((1-INLAKEPERC)*LENGTH_KM)]/
+      netpredbin[, sum((1-INLAKEPERC)*LENGTH_KM)]
+  )
+  
+  return(list(plot = anthropochangeplot,
+              stat = overallstats))
+  
+}
 
 #################################### END #######################################
